@@ -1,7 +1,3 @@
-# Pip-requirements
-# google-cloud-pubsub==2.8.0
-# Pillow==8.3.2
-
 import io
 import os
 import json
@@ -14,7 +10,7 @@ from google.cloud import pubsub_v1
 from fledge.common.common import _FLEDGE_ROOT, _FLEDGE_DATA
 
 
-_LOGGER = logger.setup(__name__, level=logging.DEBUG)
+_LOGGER = logger.setup(__name__, level=logging.INFO)
 
 _DEFAULT_CONFIG = {
     'plugin': {
@@ -82,14 +78,14 @@ def _get_certs_dir(_path):
 
 def _transmit_pubsub(pub, topic, data):
     _LOGGER.info("Transmitting data to Cloud Pub/Sub...")
-    _LOGGER.debug("{}-{}".format(type(data), data))
+    _LOGGER.debug("Data type: {} & data: {}".format(type(data), data))
     value = data
     if isinstance(data, np.ndarray):
         pil_img = Image.fromarray(data, mode='L').convert('RGB')
         img_byte_arr = io.BytesIO()
         pil_img.save(img_byte_arr, format='PNG')
         value = img_byte_arr.getvalue()
-        _LOGGER.debug("pil img content: {}".format(value))
+        _LOGGER.debug("pil image content: {}".format(value))
     # When you publish a message, the client returns a future.
     future = pub.publish(topic, value)
     _LOGGER.debug(future.result())
@@ -102,9 +98,9 @@ def _transmit_pubsub(pub, topic, data):
 
 async def plugin_send(data, payload, stream_id):
     try:
-        _LOGGER.debug("data: {}-{}".format(type(data), data))
-        _LOGGER.debug("payload: {}-{}".format(type(payload), payload))
-        _LOGGER.debug("stream_id: {}-{}".format(type(stream_id), stream_id))
+        _LOGGER.debug("data with type: {}-{}".format(type(data), data))
+        _LOGGER.debug("payload with type: {}-{}".format(type(payload), payload))
+        _LOGGER.debug("stream_id with type: {}-{}".format(type(stream_id), stream_id))
 
         # Add JSON key for service account
         # This is a prerequisite and should be placed under $FLEDGE_DATA/etc/certs/json/<.json>
@@ -116,7 +112,7 @@ async def plugin_send(data, payload, stream_id):
         # The `topic_path` method creates a fully qualified identifier
         # in the form `projects/{project_id}/topics/{topic_id}`
         topic_path = publisher.topic_path(data['projectId']['value'], data['topic']['value'])
-        _LOGGER.debug("TOPIC: {}".format(topic_path))
+        _LOGGER.debug("Publisher topic: {}".format(topic_path))
         for entry in payload:
             if 'readings' in payload[0]:
                 if isinstance(entry, dict):
@@ -146,7 +142,6 @@ async def plugin_send(data, payload, stream_id):
     except Exception as ex:
         _LOGGER.exception("Data could not be sent, {}".format(str(ex)))
     else:
-        _LOGGER.debug("ELSE BLOCK..")
         is_data_sent = True
         new_last_object_id = payload[-1]['id']
         num_sent = len(payload)
