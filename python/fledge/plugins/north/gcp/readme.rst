@@ -1,14 +1,14 @@
 .. Links in new tabs
 
-.. |gcp console| raw:: html
+.. |Google Cloud Console| raw:: html
 
    <a href="https://console.cloud.google.com" target="_blank">GCP Console</a>
 
-.. |pubsub| raw:: html
+.. |Pub/Sub section| raw:: html
 
    <a href="https://console.cloud.google.com/cloudpubsub" target="_blank">Pub-Sub</a>
 
-.. |service account| raw:: html
+.. |Service Accounts page| raw:: html
 
     <a href="https://console.cloud.google.com/iam-admin/serviceaccounts" target="_blank">Service Account</a>
 
@@ -20,47 +20,56 @@ Fledge North GCP
 
 Prerequisite
 ~~~~~~~~~~~~
-1. Configuring a Separate Cloud Pub/Sub Topic
+I. Configuring a Separate Cloud Pub/Sub Topic
     a) Setting up your Pub/Sub topic and subscription
-        i) Log into Google Cloud Console. |gcp console|
+        1) Log into |Google Cloud Console|.
 
-        ii) Go to the Pub/Sub section of the Google Cloud Console. |pubsub|
+        2) Go to the |Pub/Sub section| of the Google Cloud Console.
 
             Follow the prompt to enable the API.
-        iii) Click Create a topic. Publishing applications send messages to topics. Use camera-data as the Name.
+        3) Click Create a topic. Publishing applications send messages to topics. Use camera-data as the Name.
 
              By default, the console will also create a default subscription with the name: camera-data-sub. Keep the ‘Add a default subscription’ enabled
 
              Click ‘Create topic’ to create the topic and default subscription
 
      b) Creating service account credentials
-        i)    In the Cloud Console, go to the Service Accounts page. |service account|
-        ii)   Select your project.
-        iii)  Click Create Service Account.
-        iv)   In the Service account name field, enter a name: pubsub-publisher. The Cloud Console fills in the Service account ID field based on this name.
-        v)    Click Create and continue.
-        vi)   The service account needs publishing permissions. Use the Select a role dropdown to add the Pub/Sub Publisher role.
+
+        1) In the Cloud Console, go to the |Service Accounts page|.
+
+        2) Select your project.
+
+        3) Click Create Service Account.
+
+        4) In the Service account name field, enter a name: pubsub-publisher. The Cloud Console fills in the Service account ID field based on this name.
+
+        5) Click Create and continue.
+
+        6) The service account needs publishing permissions. Use the Select a role dropdown to add the Pub/Sub Publisher role.
                Tip: Use the string pub to filter for Pub/Sub roles.
-        vii)  Click Add another role and add Pub/Sub Subscriber.
-        viii) Click Done to finish creating the service account.
+
+        7) Click Add another role and add Pub/Sub Subscriber.
+
+        8) Click Done to finish creating the service account.
                Do not close your browser window. You will use it in the next step.
-        ix)    Download a JSON key for the service account you just created. The client library uses the key to access the Pub/Sub API.
+
+        9) Download a JSON key for the service account you just created. The client library uses the key to access the Pub/Sub API.
             - In the Cloud Console, click the email address for the service account that you created.
             - Click Keys.
             - Click Add key, then click Create new key.
             - Click Create. A JSON key file is downloaded to your computer.
             - Rename the key file to credentials.json (OPTIONAL)
 
-2. Install pip requirements
+II. Install pip requirements
 
     .. code-block:: console
 
         pip3 install -Ir requirements.txt --user --no-cache-dir
 
 
-3. Load JSON key for service account in certificate store.
+III. Load JSON key for service account in certificate store.
 
-    a) via curl command
+    1) via curl command
 
         .. code-block:: console
 
@@ -68,6 +77,6 @@ Prerequisite
 
             where credentials.json is the service account file
 
-    b) via GUI
+    2) via GUI
 
         Go to Certificate Store -> Import -> Choose certificate -> Import
