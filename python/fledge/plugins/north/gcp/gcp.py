@@ -1,6 +1,7 @@
 import io
 import os
 import json
+import gzip
 import numpy as np
 import logging
 from PIL import Image
@@ -44,12 +45,20 @@ _DEFAULT_CONFIG = {
         'mandatory': 'true'
     },
     'source': {
-        'description': 'Source of data to be sent on the stream. May be either readings or statistics.',
+        'description': 'Source of data to be sent on the stream. May be either readings or statistics',
         'type': 'enumeration',
         'default': 'readings',
         'options': ['readings', 'statistics'],
         'order': '4',
         'displayName': 'Source'
+    },
+    'outputFormat': {
+        'description': 'Publish data in the format you want to be sent on the GCP. By default in PNG image format',
+        'type': 'enumeration',
+        'default': 'image',
+        'options': ['image', 'bytes', 'JSON'],
+        'order': '5',
+        'displayName': 'Output Format'
     }
 }
 
@@ -76,10 +85,10 @@ def _get_certs_dir(_path):
     return certs_dir
 
 
-def _transmit_pubsub(pub, topic, data, datapoint):
+def _transmit_pubsub(pub, topic, data, datapoint, op_format):
     _LOGGER.info("Transmitting data to Cloud Pub/Sub...")
-    _LOGGER.debug("Data type: {} & data: {}".format(type(data), data))
-    if isinstance(data['readings'][datapoint], np.ndarray):
+    _LOGGER.debug("Type of Data: {} data: {} output pformat: {}".format(type(data), data, op_format))
+    if isinstance(data['readings'][datapoint], np.ndarray) and op_format == 'image':
         pil_img = Image.fromarray(data['readings'][datapoint], mode='L').convert('RGB')
         img_byte_arr = io.BytesIO()
         pil_img.save(img_byte_arr, format='PNG')
@@ -88,14 +97,25 @@ def _transmit_pubsub(pub, topic, data, datapoint):
         # Add other attributes like asset, id, ts, user_ts to message
         future = pub.publish(topic, img_content, asset=data['asset'],
                              id=str(data['id']), ts=data['ts'], user_ts=data['user_ts'])
+    elif isinstance(data['readings'][datapoint], list) and op_format == 'bytes':
+        compressed_data = gzip.compress(bytes(json.dumps(data), encoding="utf-8"))
+        _LOGGER.debug("Compressed JSON data: {}".format(compressed_data))
+        # Add other attributes like asset, id, ts, user_ts to message
+        future = pub.publish(topic, compressed_data, asset=data['asset'], id=str(data['id']), ts=data['ts'],
+                             user_ts=data['user_ts'])
+    elif isinstance(data['readings'][datapoint], list) and op_format == 'JSON':
+        encoded_data = json.dumps(data).encode('utf-8')
+        _LOGGER.debug("Send JSON in utf-8 encoded data: {}".format(encoded_data))
+        # Add other attributes like asset, id, ts, user_ts to message
+        future = pub.publish(topic, encoded_data, asset=data['asset'], id=str(data['id']), ts=data['ts'],
+                             user_ts=data['user_ts'])
     else:
-        # When you publish a message, the client returns a future.
         user_encode_data = json.dumps(data).encode('utf-8')
-        _LOGGER.debug("Dict to bytes: {}".format(user_encode_data))
+        _LOGGER.debug("JSON data to bytes: {}".format(user_encode_data))
         future = pub.publish(topic, user_encode_data)
-    _LOGGER.debug("Publish data: {}".format(data))
+    # When you publish a message, the client returns a future.
     _LOGGER.debug(future.result())
-    _LOGGER.info("Published data to Pub/Sub topic {}".format(topic))
+    _LOGGER.info("Published data: {} to Pub/Sub topic {}".format(data, topic))
 
     # If we want to see this publish data then use subscriber client
     # Either Google console - https://console.cloud.google.com/cloudpubsub/subscription/detail
@@ -113,6 +133,9 @@ async def plugin_send(data, payload, stream_id):
         json_certs_path = "{}/{}".format(_get_certs_dir('/etc/certs/json'), data['credentials']['value'])
         os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = json_certs_path
 
+        # output format
+        output_format = data['outputFormat']['value']
+
         # Publisher
         publisher = pubsub_v1.PublisherClient()
         # The `topic_path` method creates a fully qualified identifier
@@ -128,9 +151,9 @@ async def plugin_send(data, payload, stream_id):
                         v = entry['readings'][dp]
                         if isinstance(v, np.ndarray):
                             _LOGGER.debug("dp={}, type(v)={}, v.shape={}, v={}".format(dp, type(v), v.shape, v))
-                            # This only requires when we need to send JSON asis on GCP in case of ndarray
-                            # entry['readings'][dp] = v.tolist()
-                        _transmit_pubsub(publisher, topic_path, entry, dp)
+                            if output_format in ['bytes', 'JSON']:
+                                entry['readings'][dp] = v.tolist()
+                        _transmit_pubsub(publisher, topic_path, entry, dp, output_format)
             else:
                 _LOGGER.warning("**** 'readings' key not present in payload[0]={}".format(payload[0]))
                 is_data_sent = False
