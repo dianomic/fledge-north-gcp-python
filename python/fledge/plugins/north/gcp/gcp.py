@@ -76,18 +76,24 @@ def _get_certs_dir(_path):
     return certs_dir
 
 
-def _transmit_pubsub(pub, topic, data):
+def _transmit_pubsub(pub, topic, data, datapoint):
     _LOGGER.info("Transmitting data to Cloud Pub/Sub...")
     _LOGGER.debug("Data type: {} & data: {}".format(type(data), data))
-    value = data
-    if isinstance(data, np.ndarray):
-        pil_img = Image.fromarray(data, mode='L').convert('RGB')
+    if isinstance(data['readings'][datapoint], np.ndarray):
+        pil_img = Image.fromarray(data['readings'][datapoint], mode='L').convert('RGB')
         img_byte_arr = io.BytesIO()
         pil_img.save(img_byte_arr, format='PNG')
-        value = img_byte_arr.getvalue()
-        _LOGGER.debug("pil image content: {}".format(value))
-    # When you publish a message, the client returns a future.
-    future = pub.publish(topic, value)
+        img_content = img_byte_arr.getvalue()
+        _LOGGER.debug("pil image content: {}".format(img_content))
+        # Add other attributes like asset, id, ts, user_ts to message
+        future = pub.publish(topic, img_content, asset=data['asset'],
+                             id=str(data['id']), ts=data['ts'], user_ts=data['user_ts'])
+    else:
+        # When you publish a message, the client returns a future.
+        user_encode_data = json.dumps(data).encode('utf-8')
+        _LOGGER.debug("Dict to bytes: {}".format(user_encode_data))
+        future = pub.publish(topic, user_encode_data)
+    _LOGGER.debug("Publish data: {}".format(data))
     _LOGGER.debug(future.result())
     _LOGGER.info("Published data to Pub/Sub topic {}".format(topic))
 
@@ -122,15 +128,9 @@ async def plugin_send(data, payload, stream_id):
                         v = entry['readings'][dp]
                         if isinstance(v, np.ndarray):
                             _LOGGER.debug("dp={}, type(v)={}, v.shape={}, v={}".format(dp, type(v), v.shape, v))
-                            _LOGGER.debug("before Datapoint: {}".format(entry['readings'][dp]))
                             # This only requires when we need to send JSON asis on GCP in case of ndarray
-                            # And then pass entry['readings] with utf-8 encoding in _transmit_pubsub
                             # entry['readings'][dp] = v.tolist()
-                            _transmit_pubsub(publisher, topic_path, v)
-                        else:
-                            user_encode_data = json.dumps(entry['readings']).encode('utf-8')
-                            _LOGGER.debug("Dict to bytes: {}".format(user_encode_data))
-                            _transmit_pubsub(publisher, topic_path, user_encode_data)
+                        _transmit_pubsub(publisher, topic_path, entry, dp)
             else:
                 _LOGGER.warning("**** 'readings' key not present in payload[0]={}".format(payload[0]))
                 is_data_sent = False
