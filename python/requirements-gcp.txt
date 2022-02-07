@@ -1,2 +1,4 @@
+# Explicit libcst pip depedency is required; as its internal dep of google-cloud-pubub which uses latest version and not compatible with it
+libcst==0.3.23
 google-cloud-pubsub==2.9.0
 Pillow==8.4.0

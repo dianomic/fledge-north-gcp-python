@@ -62,11 +62,16 @@ I. Configuring a Separate Cloud Pub/Sub Topic
           - Click Create. A JSON key file is downloaded to your computer.
           - Rename the key file to credentials.json (OPTIONAL)
 
-II. Install pip requirements
+II. Install pip requirements `from <../../../../requirements-gcp.txt>`_
 
    .. code-block:: console
 
-       pip3 install -Ir requirements.txt --user --no-cache-dir
+       pip3 install -Ir requirements-gcp.txt --user --no-cache-dir
+
+   .. note::
+
+        You may see errors on installing pip requirements on some platforms which required pip upgrade.
+        Use pip3 install --upgrade pip
 
 
 III. Load JSON key for service account in certificate store.
@@ -77,8 +82,11 @@ III. Load JSON key for service account in certificate store.
 
            $ curl -sF "cert=@credentials.json" -F "overwrite=1" http://localhost:8081/fledge/certificate
 
-           where credentials.json is the service account file
+       .. note::
+           
+            where credentials.json is the service account file
 
     2) via GUI
 
        Go to Certificate Store -> Import -> Choose certificate -> Import
+
