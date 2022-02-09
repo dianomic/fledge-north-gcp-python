@@ -85,34 +85,55 @@ def _get_certs_dir(_path):
     return certs_dir
 
 
-def _transmit_pubsub(pub, topic, data, datapoint, op_format):
+def _transmit_pubsub(pub, topic, data, op_format):
     _LOGGER.info("Transmitting data to Cloud Pub/Sub...")
     _LOGGER.debug("Type of Data: {} data: {} output pformat: {}".format(type(data), data, op_format))
-    if isinstance(data['readings'][datapoint], np.ndarray) and op_format == 'image':
-        pil_img = Image.fromarray(data['readings'][datapoint], mode='L').convert('RGB')
-        img_byte_arr = io.BytesIO()
-        pil_img.save(img_byte_arr, format='PNG')
-        img_content = img_byte_arr.getvalue()
-        _LOGGER.debug("pil image content: {}".format(img_content))
-        # Add other attributes like asset, id, ts, user_ts to message
-        future = pub.publish(topic, img_content, asset=data['asset'],
-                             id=str(data['id']), ts=data['ts'], user_ts=data['user_ts'])
-    elif isinstance(data['readings'][datapoint], list) and op_format == 'bytes':
+    if op_format == 'bytes':
         compressed_data = gzip.compress(bytes(json.dumps(data), encoding="utf-8"))
         _LOGGER.debug("Compressed JSON data: {}".format(compressed_data))
         # Add other attributes like asset, id, ts, user_ts to message
         future = pub.publish(topic, compressed_data, asset=data['asset'], id=str(data['id']), ts=data['ts'],
                              user_ts=data['user_ts'])
-    elif isinstance(data['readings'][datapoint], list) and op_format == 'JSON':
+    elif op_format == 'JSON':
         encoded_data = json.dumps(data).encode('utf-8')
         _LOGGER.debug("Send JSON in utf-8 encoded data: {}".format(encoded_data))
         # Add other attributes like asset, id, ts, user_ts to message
         future = pub.publish(topic, encoded_data, asset=data['asset'], id=str(data['id']), ts=data['ts'],
                              user_ts=data['user_ts'])
+    elif op_format == 'image':
+        new_reading = data
+        key_to_remove = []
+        for _dp in data['readings']:
+            _LOGGER.debug("O/P format: {}-{}".format(op_format, _dp))
+            if isinstance(data['readings'][_dp], np.ndarray):
+                # Convert numpy array to PIL image
+                pil_img = Image.fromarray(data['readings'][_dp], mode='L').convert('RGB')
+                img_byte_arr = io.BytesIO()
+                pil_img.save(img_byte_arr, format='PNG')
+                img_content = img_byte_arr.getvalue()
+                _LOGGER.debug("For datapoint: {} pil image content: {}".format(_dp, img_content))
+                key_to_remove.append(_dp)
+                # In case of image O/p with ndarray type we need to send each publish request
+                # Add other attributes like asset, id, ts, user_ts to message
+                future = pub.publish(topic, img_content, asset=data['asset'], id=str(data['id']), ts=data['ts'],
+                                     user_ts=data['user_ts'])
+            else:
+                new_reading['readings'][_dp] = data['readings'][_dp]
+        # numpy array keys needs to removed and send the full reading in compressed format
+        for k in key_to_remove:
+            del new_reading['readings'][k]
+        _LOGGER.debug("New reading dict {}  in case of image format".format(new_reading))
+        compressed_data = gzip.compress(bytes(json.dumps(new_reading), encoding="utf-8"))
+        _LOGGER.debug("Compressed JSON data: {}".format(compressed_data))
+        # Add other attributes like asset, id, ts, user_ts to message
+        future = pub.publish(topic, compressed_data, asset=data['asset'], id=str(data['id']), ts=data['ts'],
+                             user_ts=data['user_ts'])
     else:
+        # TODO: more O/P format support in future
         user_encode_data = json.dumps(data).encode('utf-8')
         _LOGGER.debug("JSON data to bytes: {}".format(user_encode_data))
-        future = pub.publish(topic, user_encode_data)
+        future = pub.publish(topic, user_encode_data, asset=data['asset'], id=str(data['id']), ts=data['ts'],
+                             user_ts=data['user_ts'])
     # When you publish a message, the client returns a future.
     _LOGGER.debug(future.result())
     _LOGGER.info("Published data: {} to Pub/Sub topic {}".format(data, topic))
@@ -142,6 +163,7 @@ async def plugin_send(data, payload, stream_id):
         # in the form `projects/{project_id}/topics/{topic_id}`
         topic_path = publisher.topic_path(data['projectId']['value'], data['topic']['value'])
         _LOGGER.debug("Publisher topic: {}".format(topic_path))
+        full_reading = {}
         for entry in payload:
             if 'readings' in payload[0]:
                 if isinstance(entry, dict):
@@ -149,11 +171,22 @@ async def plugin_send(data, payload, stream_id):
                     for dp in entry['readings'].keys():
                         _LOGGER.debug("Datapoint: {}".format(dp))
                         v = entry['readings'][dp]
+                        full_reading[dp] = v
                         if isinstance(v, np.ndarray):
                             _LOGGER.debug("dp={}, type(v)={}, v.shape={}, v={}".format(dp, type(v), v.shape, v))
                             if output_format in ['bytes', 'JSON']:
-                                entry['readings'][dp] = v.tolist()
-                        _transmit_pubsub(publisher, topic_path, entry, dp, output_format)
+                                full_reading[dp] = v.tolist()
+                    entry['readings'] = full_reading
+                    _transmit_pubsub(publisher, topic_path, entry, output_format)
+                else:
+                    _LOGGER.warning("**** 'readings' format should be in dict; Found:{}".format(
+                        type(payload[0]['readings'])))
+                    is_data_sent = False
+                    new_last_object_id = payload[-1]['id']
+                    num_sent = len(payload)
+                    _LOGGER.debug("data sent {} last object id {} num sent {}".format(is_data_sent, new_last_object_id,
+                                                                                      num_sent))
+                    return is_data_sent, new_last_object_id, num_sent
             else:
                 _LOGGER.warning("**** 'readings' key not present in payload[0]={}".format(payload[0]))
                 is_data_sent = False
