@@ -5,6 +5,7 @@ import gzip
 import numpy as np
 import logging
 from PIL import Image
+from copy import deepcopy
 
 from fledge.common import logger
 from google.cloud import pubsub_v1
@@ -74,7 +75,14 @@ def plugin_info():
 
 
 def plugin_init(data):
-    return data
+    config_data = deepcopy(data)
+    # Add JSON key for service account
+    # It should be placed under $_FLEDGE_DATA/etc/certs/json/<.json> or use upload certificate REST API
+    json_certs_path = "{}/{}".format(_get_certs_dir('/etc/certs/json'), data['credentials']['value'])
+    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = json_certs_path
+    config_data['publisher'] = pubsub_v1.PublisherClient()
+    config_data['topic_path'] = config_data['publisher'].topic_path(data['projectId']['value'], data['topic']['value'])
+    return config_data
 
 
 def _get_certs_dir(_path):
@@ -86,10 +94,10 @@ def _get_certs_dir(_path):
 
 
 def _transmit_pubsub(pub, topic, data, op_format):
-    _LOGGER.info("Transmitting data to Cloud Pub/Sub...")
+    _LOGGER.debug("Transmitting data to Cloud Pub/Sub...")
     _LOGGER.debug("Type of Data: {} data: {} output pformat: {}".format(type(data), data, op_format))
     if op_format == 'bytes':
-        compressed_data = gzip.compress(bytes(json.dumps(data), encoding="utf-8"))
+        compressed_data = gzip.compress(bytes(json.dumps(data), encoding="utf-8"), 3)
         _LOGGER.debug("Compressed JSON data: {}".format(compressed_data))
         # Add other attributes like asset, id, ts, user_ts to message
         future = pub.publish(topic, compressed_data, asset=data['asset_code'], id=str(data['id']), ts=data['ts'],
@@ -106,8 +114,11 @@ def _transmit_pubsub(pub, topic, data, op_format):
         for _dp in data['reading']:
             _LOGGER.debug("O/P format: {}-{}".format(op_format, _dp))
             if isinstance(data['reading'][_dp], np.ndarray):
-                # Convert numpy array to PIL image
-                pil_img = Image.fromarray(data['reading'][_dp], mode='L').convert('RGB')
+                # Convert numpy array to PIL image as per shape size
+                if len(data['reading'][_dp].shape) == 3:
+                    pil_img = Image.fromarray(data['reading'][_dp], mode='RGB')
+                else:
+                    pil_img = Image.fromarray(data['reading'][_dp], mode='L').convert('RGB')
                 img_byte_arr = io.BytesIO()
                 pil_img.save(img_byte_arr, format='PNG')
                 img_content = img_byte_arr.getvalue()
@@ -136,7 +147,7 @@ def _transmit_pubsub(pub, topic, data, op_format):
                              user_ts=data['user_ts'])
     # When you publish a message, the client returns a future.
     _LOGGER.debug(future.result())
-    _LOGGER.info("Published data: {} to Pub/Sub topic {}".format(data, topic))
+    _LOGGER.debug("Published data: {} to Pub/Sub topic {}".format(data, topic))
 
     # If we want to see this publish data then use subscriber client
     # Either Google console - https://console.cloud.google.com/cloudpubsub/subscription/detail
@@ -149,19 +160,14 @@ async def plugin_send(data, payload, stream_id):
         _LOGGER.debug("payload with type: {}-{}".format(type(payload), payload))
         _LOGGER.debug("stream_id with type: {}-{}".format(type(stream_id), stream_id))
 
-        # Add JSON key for service account
-        # This is a prerequisite and should be placed under $FLEDGE_DATA/etc/certs/json/<.json>
-        json_certs_path = "{}/{}".format(_get_certs_dir('/etc/certs/json'), data['credentials']['value'])
-        os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = json_certs_path
-
         # output format
         output_format = data['outputFormat']['value']
 
         # Publisher
-        publisher = pubsub_v1.PublisherClient()
+        publisher = data['publisher']
         # The `topic_path` method creates a fully qualified identifier
         # in the form `projects/{project_id}/topics/{topic_id}`
-        topic_path = publisher.topic_path(data['projectId']['value'], data['topic']['value'])
+        topic_path = data['topic_path']
         _LOGGER.debug("Publisher topic: {}".format(topic_path))
         full_reading = {}
         for entry in payload:
@@ -194,7 +200,7 @@ async def plugin_send(data, payload, stream_id):
 
 
 def plugin_shutdown(data):
-    _LOGGER.debug('{} north plugin shut down'.format(_DEFAULT_CONFIG['plugin']['default']))
+    _LOGGER.info('{} north plugin shut down.'.format(_DEFAULT_CONFIG['plugin']['default']))
 
 
 def plugin_reconfigure():
