@@ -103,7 +103,7 @@ def _get_certs_dir(_path):
 
 def _transmit_pubsub(pub, topic, data, op_format, compression):
     _LOGGER.debug("Transmitting data to Cloud Pub/Sub...")
-    _LOGGER.debug("Type of Data: {} data: {} output pformat: {}".format(type(data), data, op_format))
+    #_LOGGER.debug("Type of Data: {} data: {} output pformat: {}".format(type(data), data, op_format))
     if op_format == 'bytes':
         compressed_data = gzip.compress(bytes(json.dumps(data), encoding="utf-8"), int(compression))
         _LOGGER.debug("Compressed JSON data: {}".format(compressed_data))
@@ -155,7 +155,7 @@ def _transmit_pubsub(pub, topic, data, op_format, compression):
                              user_ts=data['user_ts'])
     # When you publish a message, the client returns a future.
     _LOGGER.debug(future.result())
-    _LOGGER.debug("Published data: {} to Pub/Sub topic {}".format(data, topic))
+    #_LOGGER.debug("Published data: {} to Pub/Sub topic {}".format(data, topic))
 
     # If we want to see this publish data then use subscriber client
     # Either Google console - https://console.cloud.google.com/cloudpubsub/subscription/detail
