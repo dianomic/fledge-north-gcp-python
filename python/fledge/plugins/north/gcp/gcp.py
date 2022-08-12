@@ -60,6 +60,15 @@ _DEFAULT_CONFIG = {
         'options': ['image', 'bytes', 'JSON'],
         'order': '5',
         'displayName': 'Output Format'
+    },
+    'compression': {
+        'description': 'Compression factor when sending data to GCP',
+        'type': 'integer',
+        'default': "3",
+        "minimum" : "0",
+        "maximum" : "9",
+        'displayName': 'Compression Factor',
+        "validity" : "outputFormat != \"JSON\""
     }
 }
 
@@ -97,7 +106,7 @@ def _transmit_pubsub(pub, topic, data, op_format):
     _LOGGER.debug("Transmitting data to Cloud Pub/Sub...")
     _LOGGER.debug("Type of Data: {} data: {} output pformat: {}".format(type(data), data, op_format))
     if op_format == 'bytes':
-        compressed_data = gzip.compress(bytes(json.dumps(data), encoding="utf-8"), 3)
+        compressed_data = gzip.compress(bytes(json.dumps(data), encoding="utf-8"), int(data["compression"]))
         _LOGGER.debug("Compressed JSON data: {}".format(compressed_data))
         # Add other attributes like asset, id, ts, user_ts to message
         future = pub.publish(topic, compressed_data, asset=data['asset_code'], id=str(data['id']), ts=data['ts'],
@@ -134,7 +143,7 @@ def _transmit_pubsub(pub, topic, data, op_format):
         for k in key_to_remove:
             del new_reading['reading'][k]
         _LOGGER.debug("New reading dict {}  in case of image format".format(new_reading))
-        compressed_data = gzip.compress(bytes(json.dumps(new_reading), encoding="utf-8"))
+        compressed_data = gzip.compress(bytes(json.dumps(new_reading), encoding="utf-8"), int(data["compression"]))
         _LOGGER.debug("Compressed JSON data: {}".format(compressed_data))
         # Add other attributes like asset, id, ts, user_ts to message
         future = pub.publish(topic, compressed_data, asset=data['asset_code'], id=str(data['id']), ts=data['ts'],
@@ -152,7 +161,6 @@ def _transmit_pubsub(pub, topic, data, op_format):
     # If we want to see this publish data then use subscriber client
     # Either Google console - https://console.cloud.google.com/cloudpubsub/subscription/detail
     # Or write own subscriber client - http://googleapis.dev/python/pubsub/latest/index.html#subscribing
-
 
 async def plugin_send(data, payload, stream_id):
     try:
