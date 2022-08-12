@@ -101,12 +101,11 @@ def _get_certs_dir(_path):
     certs_dir = os.path.expanduser(dir_path)
     return certs_dir
 
-
-def _transmit_pubsub(pub, topic, data, op_format):
+def _transmit_pubsub(pub, topic, data, op_format, compression):
     _LOGGER.debug("Transmitting data to Cloud Pub/Sub...")
     _LOGGER.debug("Type of Data: {} data: {} output pformat: {}".format(type(data), data, op_format))
     if op_format == 'bytes':
-        compressed_data = gzip.compress(bytes(json.dumps(data), encoding="utf-8"), int(data["compression"]))
+        compressed_data = gzip.compress(bytes(json.dumps(data), encoding="utf-8"), int(compression))
         _LOGGER.debug("Compressed JSON data: {}".format(compressed_data))
         # Add other attributes like asset, id, ts, user_ts to message
         future = pub.publish(topic, compressed_data, asset=data['asset_code'], id=str(data['id']), ts=data['ts'],
@@ -143,7 +142,7 @@ def _transmit_pubsub(pub, topic, data, op_format):
         for k in key_to_remove:
             del new_reading['reading'][k]
         _LOGGER.debug("New reading dict {}  in case of image format".format(new_reading))
-        compressed_data = gzip.compress(bytes(json.dumps(new_reading), encoding="utf-8"), int(data["compression"]))
+        compressed_data = gzip.compress(bytes(json.dumps(new_reading), encoding="utf-8"), int(compression))
         _LOGGER.debug("Compressed JSON data: {}".format(compressed_data))
         # Add other attributes like asset, id, ts, user_ts to message
         future = pub.publish(topic, compressed_data, asset=data['asset_code'], id=str(data['id']), ts=data['ts'],
@@ -162,6 +161,7 @@ def _transmit_pubsub(pub, topic, data, op_format):
     # Either Google console - https://console.cloud.google.com/cloudpubsub/subscription/detail
     # Or write own subscriber client - http://googleapis.dev/python/pubsub/latest/index.html#subscribing
 
+
 async def plugin_send(data, payload, stream_id):
     try:
         _LOGGER.debug("data with type: {}-{}".format(type(data), data))
@@ -173,6 +173,8 @@ async def plugin_send(data, payload, stream_id):
 
         # Publisher
         publisher = data['publisher']
+
+        compression = data['compression']['value']
         # The `topic_path` method creates a fully qualified identifier
         # in the form `projects/{project_id}/topics/{topic_id}`
         topic_path = data['topic_path']
@@ -191,7 +193,7 @@ async def plugin_send(data, payload, stream_id):
                             if output_format in ['bytes', 'JSON']:
                                 full_reading[dp] = v.tolist()
                     entry['reading'] = full_reading
-                    _transmit_pubsub(publisher, topic_path, entry, output_format)
+                    _transmit_pubsub(publisher, topic_path, entry, output_format, compression)
                 else:
                     _LOGGER.warning("**** 'reading' format should be in dict; Found:{}".format(
                         type(payload[0]['reading'])))
